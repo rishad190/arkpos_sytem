@@ -25,7 +25,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
-import { log } from "console";
 
 const metersToYards = (meters: number) => meters * 1.09361;
 
@@ -49,7 +48,7 @@ export default function NewSalePage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [saleItems, setSaleItems] = useState<SaleItem[]>([]);
   const [selectedProduct, setSelectedProduct] = useState("");
-  const [quantity, setQuantity] = useState(1);
+
   const [customPrice, setCustomPrice] = useState<number | null>(null);
   const [useCustomPrice, setUseCustomPrice] = useState(false);
   const [customerName, setCustomerName] = useState("");
@@ -58,6 +57,7 @@ export default function NewSalePage() {
   const [isRecurring, setIsRecurring] = useState(false);
   const { toast } = useToast();
   const [unit, setUnit] = useState<"yards" | "meters" | "kg">("yards");
+  const [meterEntries, setMeterEntries] = useState<number[]>([]);
 
   useEffect(() => {
     const db = getDatabase(app);
@@ -80,24 +80,27 @@ export default function NewSalePage() {
   const handleAddItem = () => {
     const product = products.find((p) => p.id === selectedProduct);
 
-    if (product) {
-      let convertedQuantity = quantity;
-      let convertedUnit = unit;
+    if (product && meterEntries.length > 0) {
+      const newItems: SaleItem[] = meterEntries.map((meters) => {
+        let convertedQuantity = meters;
+        let convertedUnit = unit;
 
-      if (unit === "meters") {
-        convertedQuantity = metersToYards(quantity);
-      }
+        if (unit === "yards") {
+          convertedQuantity = metersToYards(meters);
+        }
 
-      const newItem: SaleItem = {
-        ...product,
-        quantity: convertedQuantity,
-        unit: convertedUnit,
-        customPrice: useCustomPrice ? customPrice : null,
-      };
-      setSaleItems([...saleItems, newItem]);
+        return {
+          ...product,
+          quantity: convertedQuantity,
+          unit: convertedUnit,
+          customPrice: useCustomPrice ? customPrice : null,
+        };
+      });
+
+      setSaleItems([...saleItems, ...newItems]);
       // Reset form
       setSelectedProduct("");
-      setQuantity(1);
+      setMeterEntries([]);
       setUnit("yards");
       setCustomPrice(null);
       setUseCustomPrice(false);
@@ -189,33 +192,60 @@ export default function NewSalePage() {
               </Select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="quantity">Quantity</Label>
-              <div className="flex space-x-2">
-                <Input
-                  id="quantity"
-                  type="number"
-                  min="0.01"
-                  step="0.01"
-                  value={quantity}
-                  onChange={(e) => setQuantity(parseFloat(e.target.value))}
-                  className="flex-grow"
-                />
-                <Select
-                  value={unit}
-                  onValueChange={(value: "yards" | "meters" | "kg") =>
-                    setUnit(value)
-                  }
+              <Label htmlFor="quantity">Quantity (in meters)</Label>
+              <div className="flex flex-col space-y-2">
+                {meterEntries.map((entry, index) => (
+                  <div key={index} className="flex space-x-2">
+                    <Input
+                      type="number"
+                      min="0.01"
+                      step="0.01"
+                      value={entry}
+                      onChange={(e) => {
+                        const newEntries = [...meterEntries];
+                        newEntries[index] = parseFloat(e.target.value);
+                        setMeterEntries(newEntries);
+                      }}
+                      className="flex-grow"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => {
+                        setMeterEntries(
+                          meterEntries.filter((_, i) => i !== index)
+                        );
+                      }}
+                    >
+                      Remove
+                    </Button>
+                  </div>
+                ))}
+                <Button
+                  type="button"
+                  onClick={() => setMeterEntries([...meterEntries, 0])}
                 >
-                  <SelectTrigger className="w-[120px]">
-                    <SelectValue placeholder="Unit" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="yards">Yards</SelectItem>
-                    <SelectItem value="meters">Meters</SelectItem>
-                    <SelectItem value="kg">KG</SelectItem>
-                  </SelectContent>
-                </Select>
+                  Add Meter Entry
+                </Button>
               </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="unit">Unit</Label>
+              <Select
+                value={unit}
+                onValueChange={(value: "yards" | "meters" | "kg") =>
+                  setUnit(value)
+                }
+              >
+                <SelectTrigger className="w-[120px]">
+                  <SelectValue placeholder="Unit" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="yards">Yards</SelectItem>
+                  <SelectItem value="meters">Meters</SelectItem>
+                  <SelectItem value="kg">KG</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-2">
               <div className="flex items-center space-x-2">
@@ -350,11 +380,11 @@ export default function NewSalePage() {
             </div>
             <div className="flex items-center space-x-2">
               <Switch
-                id="recurring"
+                id="recurring-sale"
                 checked={isRecurring}
                 onCheckedChange={setIsRecurring}
               />
-              <Label htmlFor="recurring">Recurring Sale</Label>
+              <Label htmlFor="recurring-sale">Recurring Sale</Label>
             </div>
           </CardContent>
         </Card>
