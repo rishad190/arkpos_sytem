@@ -38,6 +38,7 @@ import AddCategoryForm from "@/components/Inventory/AddCategoryForm";
 interface Category {
   id: string;
   name: string;
+  description: string;
 }
 
 interface Subcategory {
@@ -150,7 +151,12 @@ export default function InventoryPage() {
       product.containerNumber.toLowerCase().includes(searchTermLower)
     );
   });
-
+  const transformedCategories: Category[] = Object.entries(categories).map(
+    ([id, data]) => ({
+      id, // Add the Firebase key as the "id"
+      ...data, // Spread the category data (name, description, etc.)
+    })
+  );
   return (
     <>
       <div className="p-4 md:p-8 space-y-6">
@@ -191,7 +197,7 @@ export default function InventoryPage() {
               <DialogContent>
                 <AddSubCategoryForm
                   onComplete={() => setIsAddingSubcategory(false)}
-                  categories={Object.values(categories)}
+                  categories={transformedCategories}
                 />
               </DialogContent>
             </Dialog>

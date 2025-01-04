@@ -1,4 +1,6 @@
-import { useState } from "react";
+import React, { useState, useCallback } from "react";
+import { getDatabase, ref, push, serverTimestamp } from "firebase/database";
+import app from "@/lib/firebase";
 import {
   Select,
   SelectContent,
@@ -18,12 +20,11 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { getDatabase, ref, push } from "firebase/database";
-import app from "@/lib/firebase";
 
 interface Category {
   id: string;
   name: string;
+  description: string;
 }
 
 interface AddSubCategoryFormProps {
@@ -35,18 +36,41 @@ export function AddSubCategoryForm({
   categories,
   onComplete,
 }: AddSubCategoryFormProps) {
-  const [parentCategory, setParentCategory] = useState("");
-  const [subcategoryName, setSubcategoryName] = useState("");
-  const [subcategoryDescription, setSubcategoryDescription] = useState("");
+  const [formData, setFormData] = useState({
+    parentCategory: "",
+    subcategoryName: "",
+    subcategoryDescription: "",
+  });
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
 
+  const handleInputChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+      const { id, value } = e.target;
+      setFormData((prev) => ({ ...prev, [id]: value }));
+    },
+    []
+  );
+
+  const handleSelectChange = useCallback((value: string) => {
+    setFormData((prev) => ({ ...prev, parentCategory: value }));
+  }, []);
+
+  const validateForm = useCallback(() => {
+    const errors = [];
+    if (!formData.parentCategory) errors.push("Parent category is required");
+    if (!formData.subcategoryName.trim())
+      errors.push("Subcategory name is required");
+    return errors;
+  }, [formData]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!parentCategory || !subcategoryName.trim()) {
+    const errors = validateForm();
+    if (errors.length > 0) {
       toast({
-        title: "Error",
-        description: "Parent category and subcategory name are required",
+        title: "Validation Error",
+        description: errors.join(". "),
         variant: "destructive",
       });
       return;
@@ -55,22 +79,30 @@ export function AddSubCategoryForm({
     setIsLoading(true);
     try {
       const db = getDatabase(app);
-      const subcategoriesRef = ref(db, `subcategories/${parentCategory}`);
+      const subcategoriesRef = ref(
+        db,
+        `subcategories/${formData.parentCategory}`
+      );
       await push(subcategoriesRef, {
-        name: subcategoryName,
-        description: subcategoryDescription,
+        name: formData.subcategoryName.trim(),
+        description: formData.subcategoryDescription.trim(),
+        createdAt: serverTimestamp(),
       });
       toast({
         title: "Success",
         description: "Subcategory added successfully",
       });
-      setSubcategoryName("");
-      setSubcategoryDescription("");
+      setFormData({
+        parentCategory: "",
+        subcategoryName: "",
+        subcategoryDescription: "",
+      });
       onComplete();
     } catch (error) {
+      console.error("Error adding subcategory:", error);
       toast({
         title: "Error",
-        description: "Failed to add subcategory",
+        description: "Failed to add subcategory. Please try again.",
         variant: "destructive",
       });
     } finally {
@@ -86,9 +118,12 @@ export function AddSubCategoryForm({
       <form onSubmit={handleSubmit}>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="parent-category">Parent Category</Label>
-            <Select value={parentCategory} onValueChange={setParentCategory}>
-              <SelectTrigger id="parent-category">
+            <Label htmlFor="parentCategory">Parent Category</Label>
+            <Select
+              value={formData.parentCategory}
+              onValueChange={handleSelectChange}
+            >
+              <SelectTrigger id="parentCategory">
                 <SelectValue placeholder="Select a category" />
               </SelectTrigger>
               <SelectContent>
@@ -102,23 +137,25 @@ export function AddSubCategoryForm({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="subcategory-name">Subcategory Name</Label>
+            <Label htmlFor="subcategoryName">Subcategory Name</Label>
             <Input
-              id="subcategory-name"
-              value={subcategoryName}
-              onChange={(e) => setSubcategoryName(e.target.value)}
+              id="subcategoryName"
+              value={formData.subcategoryName}
+              onChange={handleInputChange}
               placeholder="Enter subcategory name"
+              maxLength={50}
             />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="subcategory-description">Description</Label>
+            <Label htmlFor="subcategoryDescription">Description</Label>
             <Textarea
-              id="subcategory-description"
-              value={subcategoryDescription}
-              onChange={(e) => setSubcategoryDescription(e.target.value)}
-              placeholder="Enter subcategory description"
+              id="subcategoryDescription"
+              value={formData.subcategoryDescription}
+              onChange={handleInputChange}
+              placeholder="Enter subcategory description (optional)"
               rows={3}
+              maxLength={200}
             />
           </div>
         </CardContent>

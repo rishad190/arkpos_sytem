@@ -26,82 +26,157 @@ import {
 } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
 
-const metersToYards = (meters: number) => meters * 1.09361;
+interface Category {
+  id: string;
+  name: string;
+}
+
+interface Subcategory {
+  id: string;
+  name: string;
+  description: string;
+  categoryId: string;
+}
 
 interface Product {
   id: string;
   name: string;
   sku: string;
   category: string;
+  subcategory: string;
   price: number;
-  stock: number;
-  unit: "yards" | "meters" | "kg";
+  quantity: number;
 }
 
 interface SaleItem extends Product {
   quantity: number;
-  unit: "yards" | "meters" | "kg";
   customPrice: number | null;
 }
 
 export default function NewSalePage() {
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [subCategories, setSubCategories] = useState<Subcategory[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [saleItems, setSaleItems] = useState<SaleItem[]>([]);
-  const [selectedProduct, setSelectedProduct] = useState("");
-
+  const [selectedCategory, setSelectedCategory] = useState<string>("");
+  const [selectedSubCategory, setSelectedSubCategory] = useState<string>("");
+  const [selectedProduct, setSelectedProduct] = useState<string>("");
+  const [quantity, setQuantity] = useState<number>(1);
   const [customPrice, setCustomPrice] = useState<number | null>(null);
-  const [useCustomPrice, setUseCustomPrice] = useState(false);
-  const [customerName, setCustomerName] = useState("");
-  const [customerPhone, setCustomerPhone] = useState("");
-  const [notes, setNotes] = useState("");
-  const [isRecurring, setIsRecurring] = useState(false);
+  const [useCustomPrice, setUseCustomPrice] = useState<boolean>(false);
+  const [customerName, setCustomerName] = useState<string>("");
+  const [customerPhone, setCustomerPhone] = useState<string>("");
+  const [notes, setNotes] = useState<string>("");
+  const [isRecurring, setIsRecurring] = useState<boolean>(false);
   const { toast } = useToast();
-  const [unit, setUnit] = useState<"yards" | "meters" | "kg">("yards");
-  const [meterEntries, setMeterEntries] = useState<number[]>([]);
 
   useEffect(() => {
     const db = getDatabase(app);
+    const categoriesRef = ref(db, "categories");
+    const subCategoriesRef = ref(db, "subcategories");
     const productsRef = ref(db, "products");
 
-    const unsubscribe = onValue(productsRef, (snapshot) => {
-      const data = snapshot.val();
-      const productList = data
-        ? Object.entries(data).map(([id, product]) => ({
-            ...(product as Product),
-            id,
-          }))
-        : [];
-      setProducts(productList);
-    });
+    const unsubscribeCategories = onValue(
+      categoriesRef,
+      (snapshot) => {
+        const data = snapshot.val();
+        const categoryList = data
+          ? Object.entries(data).map(([id, category]) => ({
+              id,
+              name: (category as { name: string }).name,
+            }))
+          : [];
+        setCategories(categoryList);
+      },
+      (error) => {
+        console.error("Error fetching categories:", error);
+        toast({
+          title: "Error",
+          description: "Failed to fetch categories. Please try again.",
+          variant: "destructive",
+        });
+      }
+    );
 
-    return () => unsubscribe();
-  }, []);
+    const unsubscribeSubCategories = onValue(
+      subCategoriesRef,
+      (snapshot) => {
+        const data = snapshot.val();
+        const subCategoryList: Subcategory[] = [];
+        if (data) {
+          Object.entries(data).forEach(([categoryId, subcategories]) => {
+            Object.entries(subcategories as Record<string, any>).forEach(
+              ([subCategoryId, subCategory]) => {
+                subCategoryList.push({
+                  id: subCategoryId,
+                  name: subCategory.name,
+                  description: subCategory.description,
+                  categoryId: categoryId,
+                });
+              }
+            );
+          });
+        }
+        setSubCategories(subCategoryList);
+      },
+      (error) => {
+        console.error("Error fetching subcategories:", error);
+        toast({
+          title: "Error",
+          description: "Failed to fetch subcategories. Please try again.",
+          variant: "destructive",
+        });
+      }
+    );
+
+    const unsubscribeProducts = onValue(
+      productsRef,
+      (snapshot) => {
+        const data = snapshot.val();
+        const productList = data
+          ? Object.entries(data).map(([id, product]) => ({
+              ...(product as Product),
+              id,
+            }))
+          : [];
+        setProducts(productList);
+      },
+      (error) => {
+        console.error("Error fetching products:", error);
+        toast({
+          title: "Error",
+          description: "Failed to fetch products. Please try again.",
+          variant: "destructive",
+        });
+      }
+    );
+
+    return () => {
+      unsubscribeCategories();
+      unsubscribeSubCategories();
+      unsubscribeProducts();
+    };
+  }, [toast]);
 
   const handleAddItem = () => {
     const product = products.find((p) => p.id === selectedProduct);
 
-    if (product && meterEntries.length > 0) {
-      const newItems: SaleItem[] = meterEntries.map((meters) => {
-        let convertedQuantity = meters;
-        let convertedUnit = unit;
-
-        if (unit === "yards") {
-          convertedQuantity = metersToYards(meters);
-        }
-
-        return {
-          ...product,
-          quantity: convertedQuantity,
-          unit: convertedUnit,
-          customPrice: useCustomPrice ? customPrice : null,
-        };
-      });
-
-      setSaleItems([...saleItems, ...newItems]);
-      // Reset form
+    if (product) {
+      const categoryName: Category | undefined = categories.find(
+        (p) => p.id === selectedCategory
+      );
+      const subCategoryName: Subcategory | undefined = subCategories.find(
+        (p) => p.id === selectedSubCategory
+      );
+      const newItem: SaleItem = {
+        ...product,
+        name: `${categoryName?.name}(${subCategoryName?.name})`,
+        quantity,
+        customPrice: useCustomPrice ? customPrice : null,
+      };
+      setSaleItems([...saleItems, newItem]);
       setSelectedProduct("");
-      setMeterEntries([]);
-      setUnit("yards");
+      setQuantity(1);
       setCustomPrice(null);
       setUseCustomPrice(false);
     }
@@ -173,6 +248,52 @@ export default function NewSalePage() {
             <CardTitle>Add Products</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="category">Select Category</Label>
+                <Select
+                  value={selectedCategory}
+                  onValueChange={(value) => {
+                    setSelectedCategory(value);
+                    setSelectedSubCategory("");
+                  }}
+                >
+                  <SelectTrigger id="category">
+                    <SelectValue placeholder="Select a category" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {categories.map((category) => (
+                      <SelectItem key={category.id} value={category.id}>
+                        {category.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="subCategory">Select Sub Category</Label>
+                <Select
+                  value={selectedSubCategory}
+                  onValueChange={setSelectedSubCategory}
+                >
+                  <SelectTrigger id="subCategory">
+                    <SelectValue placeholder="Select a sub category" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {subCategories
+                      .filter(
+                        (subCategory) =>
+                          subCategory.categoryId === selectedCategory
+                      )
+                      .map((subCategory) => (
+                        <SelectItem key={subCategory.id} value={subCategory.id}>
+                          {subCategory.name}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
             <div className="space-y-2">
               <Label htmlFor="product">Select Product</Label>
               <Select
@@ -183,69 +304,29 @@ export default function NewSalePage() {
                   <SelectValue placeholder="Select a product" />
                 </SelectTrigger>
                 <SelectContent>
-                  {products.map((product) => (
-                    <SelectItem key={product.id} value={product.id}>
-                      {product.name} - ${product.price} (Stock: {product.stock})
-                    </SelectItem>
-                  ))}
+                  {products
+                    .filter(
+                      (product) =>
+                        product.category === selectedCategory && // Use categoryId here
+                        product.subcategory === selectedSubCategory // Use subcategoryId here
+                    )
+                    .map((product) => (
+                      <SelectItem key={product.id} value={product.id}>
+                        {product.name} (Stock: {product.quantity})
+                      </SelectItem>
+                    ))}
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="quantity">Quantity (in meters)</Label>
-              <div className="flex flex-col space-y-2">
-                {meterEntries.map((entry, index) => (
-                  <div key={index} className="flex space-x-2">
-                    <Input
-                      type="number"
-                      min="0.01"
-                      step="0.01"
-                      value={entry}
-                      onChange={(e) => {
-                        const newEntries = [...meterEntries];
-                        newEntries[index] = parseFloat(e.target.value);
-                        setMeterEntries(newEntries);
-                      }}
-                      className="flex-grow"
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => {
-                        setMeterEntries(
-                          meterEntries.filter((_, i) => i !== index)
-                        );
-                      }}
-                    >
-                      Remove
-                    </Button>
-                  </div>
-                ))}
-                <Button
-                  type="button"
-                  onClick={() => setMeterEntries([...meterEntries, 0])}
-                >
-                  Add Meter Entry
-                </Button>
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="unit">Unit</Label>
-              <Select
-                value={unit}
-                onValueChange={(value: "yards" | "meters" | "kg") =>
-                  setUnit(value)
-                }
-              >
-                <SelectTrigger className="w-[120px]">
-                  <SelectValue placeholder="Unit" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="yards">Yards</SelectItem>
-                  <SelectItem value="meters">Meters</SelectItem>
-                  <SelectItem value="kg">KG</SelectItem>
-                </SelectContent>
-              </Select>
+              <Label htmlFor="quantity">Quantity</Label>
+              <Input
+                id="quantity"
+                type="number"
+                min="1"
+                value={quantity}
+                onChange={(e) => setQuantity(parseInt(e.target.value))}
+              />
             </div>
             <div className="space-y-2">
               <div className="flex items-center space-x-2">
@@ -284,7 +365,6 @@ export default function NewSalePage() {
                 <TableRow>
                   <TableHead>Product</TableHead>
                   <TableHead>Quantity</TableHead>
-                  <TableHead>Unit</TableHead>
                   <TableHead>Price</TableHead>
                   <TableHead>Total</TableHead>
                   <TableHead>Action</TableHead>
@@ -294,18 +374,9 @@ export default function NewSalePage() {
                 {saleItems.map((item, index) => (
                   <TableRow key={index}>
                     <TableCell>{item.name}</TableCell>
+                    <TableCell>{item.quantity}</TableCell>
                     <TableCell>
-                      {item.quantity.toFixed(2)} {item.unit}
-                      {item.unit !== item.unit &&
-                        ` (${(
-                          item.quantity *
-                          (item.unit === "yards" ? 0.9144 : 1.09361)
-                        ).toFixed(2)} ${
-                          item.unit === "yards" ? "meters" : "yards"
-                        })`}
-                    </TableCell>
-                    <TableCell>
-                      ৳
+                      $
                       {(item.customPrice !== null
                         ? item.customPrice
                         : item.price
